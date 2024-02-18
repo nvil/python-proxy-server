@@ -99,7 +99,7 @@ def conn_string(conn, data, addr):
         #print(data)
         if sender == 1:
             webserver = 'localhost'
-            #webserver = '59.11.41.207'
+            #webserver = '000.000.000.000'
             port = INTERNAL_PROXY_PORT
         else:
             webserver = 'localhost'
