@@ -132,7 +132,9 @@ def proxy_server(webserver, port, conn, addr, data):
             if(len(reply)>0):
                 if sender == 1:
                     reply = decrypt_str(reply)
+                    print(reply)
                 else:
+                    print(reply)
                     reply = encrypt_str(reply)
 
                 conn.send(reply)
