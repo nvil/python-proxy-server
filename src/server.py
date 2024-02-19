@@ -29,18 +29,18 @@ sender = args.sender
 if sender == 0:
     listening_port = INTERNAL_PROXY_PORT #'55555'
 
-def encrypt_str(data) -> str:
+def encrypt_str(data) -> bytearray:
     data = data[::-1]
     result = bytearray(data)
     for i in range(len(result)):
-        result[i] = result[i] + 2
+        result[i] = (result[i] + 2) & 0xff
     return result
 
-def decrypt_str(data) -> str:
+def decrypt_str(data) -> bytearray:
     data = data[::-1]
     result = bytearray(data)
     for i in range(len(result)):
-        result[i] = result[i] - 2
+        result[i] = (result[i] - 2) & 0xff
     return result
 
 def start():    #Main Program
@@ -99,7 +99,6 @@ def conn_string(conn, data, addr):
         #print(data)
         if sender == 1:
             webserver = 'localhost'
-            #webserver = '000.000.000.000'
             port = INTERNAL_PROXY_PORT
         else:
             webserver = 'localhost'
@@ -112,52 +111,67 @@ def conn_string(conn, data, addr):
 
 def proxy_server(webserver, port, conn, addr, data):
     try:
-        if sender == 1:
-            data = encrypt_str(data)
-        else:
-            data = decrypt_str(data)
-
-        print('-------------------------------')
-        print(data)
-        print('-------------------------------')
-        print(webserver, port, conn, addr) #Debugging purpose 
-        print('-------------------------------')
-        print()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((webserver, port))
-        sock.send(data)
-
-        while 1:
-            reply = sock.recv(buffer_size)
-            if(len(reply)>0):
-                if sender == 1:
-                    reply = decrypt_str(reply)
-                    print(reply)
-                else:
-                    print(reply)
-                    reply = encrypt_str(reply)
-
-                conn.send(reply)
-                
-                dar = float(len(reply))
-                dar = float(dar/1024)
-                dar = "%.3s" % (str(dar))
-                dar = "%s KB" % (dar)
-                print("[*] Request Done: %s => %s <=" % (str(addr[0]), str(dar)))
-
+        reply = ''
+        while True:
+            print('-------------------------------')
+            if sender == 1:
+                print(data)
+                data = encrypt_str(data)
             else:
+                data = decrypt_str(data)
+                print(data.decode())
+
+            print('-------------------------------')
+            print(webserver, port, conn, addr) #Debugging purpose 
+            print('-------------------------------')
+            print()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((webserver, port))
+            sock.send(data)
+
+            while True:
+                reply = sock.recv(buffer_size)
+                if len(reply) > 0:
+                    if sender == 1:
+                        reply = decrypt_str(reply)
+                        print(reply.decode())
+                    else:
+                        print(reply)
+                        reply = encrypt_str(reply)
+                    print('-------------------------------')
+
+                    conn.send(reply)
+                    
+                    dar = float(len(reply))
+                    dar = float(dar/1024)
+                    dar = f"{dar:.3f} KB"
+                    print()
+                    print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=")
+
+                else:
+                    break
+            # inner while loop
+
+            if len(reply) > 0:
+                try:
+                    data = conn.recv(buffer_size) #Recieve client data
+                except Exception as e:
+                    print(e)
+                    break
+            else:
+                print(f"[*] Connection Closed: {addr[0]}:{addr[1]}")
+                print()
                 break
+        # outer while loop
 
         sock.close()
-
         conn.close()
+
     except socket.error:
         sock.close()
         conn.close()
         print(sock.error)
         sys.exit(1)
-
-
 
 if __name__== "__main__":
     start()
