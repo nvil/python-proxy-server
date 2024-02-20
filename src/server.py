@@ -119,7 +119,10 @@ def proxy_server(webserver, port, conn, addr, data):
                 data = encrypt_str(data)
             else:
                 data = decrypt_str(data)
-                print(data.decode())
+                try:
+                    print(data.decode())
+                except UnicodeDecodeError:
+                    print(data)
 
             print('-------------------------------')
             print(webserver, port, conn, addr) #Debugging purpose 
@@ -134,7 +137,10 @@ def proxy_server(webserver, port, conn, addr, data):
                 if len(reply) > 0:
                     if sender == 1:
                         reply = decrypt_str(reply)
-                        print(reply.decode())
+                        try:
+                            print(reply.decode())
+                        except UnicodeDecodeError:
+                            print(reply)
                     else:
                         print(reply)
                         reply = encrypt_str(reply)
