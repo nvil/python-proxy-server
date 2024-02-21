@@ -26,6 +26,8 @@ max_connection = args.max_conn
 buffer_size = args.buffer_size
 sender = args.sender
 
+connect_counter = 1
+
 if sender == 0:
     listening_port = INTERNAL_PROXY_PORT #'55555'
 
@@ -71,7 +73,8 @@ def start():    #Main Program
             sys.exit(1)
 
 def conn_string(conn, data, addr):
-    print("\n[*] New connection established...")
+    global sender, connect_counter
+
     try:
         #print(data)
         first_line = data.split(b'\n')[0]
@@ -104,6 +107,10 @@ def conn_string(conn, data, addr):
         else:
             webserver = 'localhost'
             port = 443
+
+        print('\n-------------------------------')
+        print(f'\n[*] New connection established... {connect_counter}\n')
+        connect_counter += 1
         proxy_server(webserver, port, conn, addr, data)
     except Exception as e:
         print(e)
@@ -111,26 +118,40 @@ def conn_string(conn, data, addr):
         pass
 
 def proxy_server(webserver, port, conn, addr, data):
+    global sender, buffer_size
+
     try:
         reply = ''
+        sock = 0
+        socket_counter = 1
         while True:
             print('-------------------------------')
-            if sender == 1:
-                print(data)
-                data = encrypt_str(data)
-            else:
-                data = decrypt_str(data)
-                try:
-                    print(data.decode())
-                except UnicodeDecodeError:
+            if sock == 0:
+                if sender == 1:
                     print(data)
+                    data = encrypt_str(data)
+                else:
+                    data = decrypt_str(data)
+                    try:
+                        print(data.decode())
+                    except UnicodeDecodeError:
+                        print(data)
+                print(f'\n---- Data length:{len(data)}\n')
+            else:
+                print(f'\n---- Data length:{len(data)}\n')
 
-            print('-------------------------------')
-            print(webserver, port, conn, addr) #Debugging purpose 
-            print('-------------------------------')
-            print()
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((webserver, port))
+            #Create a new socket if it is not created already. Else reuse the existing socket.
+            if sock == 0:
+                print('-------------------------------')
+                print(f'[*] Creating a new socket... {socket_counter}')
+                print()
+                print(f'[*] Connect to {webserver}:{port}, {conn}, return addr:{addr}') #Debugging purpose 
+                print('-------------------------------')
+                print()
+                socket_counter += 1
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((webserver, port))
+
             sock.send(data)
 
             try:
@@ -154,10 +175,13 @@ def proxy_server(webserver, port, conn, addr, data):
                         dar = float(dar/1024)
                         dar = f"{dar:.3f} KB"
                         print()
-                        print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=")
-                        break
+                        print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=\n")
+                        break # exit inner loop 
                     else:
-                        break
+                        break # exit inner loop because something happened...
+
+                    # end of inner while loop
+                    pass
                 # inner while loop
             except KeyboardInterrupt:
                 print("\n[*] User has requested an interrupt")
@@ -169,13 +193,17 @@ def proxy_server(webserver, port, conn, addr, data):
             if len(reply) > 0:
                 try:
                     data = conn.recv(buffer_size) #Recieve client data
+                    if len(data) == 0:
+                        print(f"[*] Connection Closed: {addr[0]}:{addr[1]}\n")
+                        break # exit outer loop
                 except Exception as e:
                     print(e)
-                    break
+                    data = ''
+                    break # exit outer loop
             else:
-                print(f"[*] Connection Closed: {addr[0]}:{addr[1]}")
-                print()
-                break
+                print(f"[*] Connection Closed: {addr[0]}:{addr[1]}\n")
+                data = ''
+                break # exit outer loop
 
             # end of outer while loop
             pass
