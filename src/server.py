@@ -71,6 +71,7 @@ def start():    #Main Program
             sys.exit(1)
 
 def conn_string(conn, data, addr):
+    print("\n[*] New connection established...")
     try:
         #print(data)
         first_line = data.split(b'\n')[0]
@@ -132,31 +133,38 @@ def proxy_server(webserver, port, conn, addr, data):
             sock.connect((webserver, port))
             sock.send(data)
 
-            while True:
-                reply = sock.recv(buffer_size)
-                if len(reply) > 0:
-                    if sender == 1:
-                        reply = decrypt_str(reply)
-                        try:
-                            print(reply.decode())
-                        except UnicodeDecodeError:
+            try:
+                while True:
+                    reply = sock.recv(buffer_size)
+                    if len(reply) > 0:
+                        if sender == 1:
+                            reply = decrypt_str(reply)
+                            try:
+                                print(reply.decode())
+                            except UnicodeDecodeError:
+                                print(reply)
+                        else:
                             print(reply)
+                            reply = encrypt_str(reply)
+                        print('-------------------------------')
+
+                        conn.send(reply)
+                        
+                        dar = float(len(reply))
+                        dar = float(dar/1024)
+                        dar = f"{dar:.3f} KB"
+                        print()
+                        print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=")
+                        break
                     else:
-                        print(reply)
-                        reply = encrypt_str(reply)
-                    print('-------------------------------')
-
-                    conn.send(reply)
-                    
-                    dar = float(len(reply))
-                    dar = float(dar/1024)
-                    dar = f"{dar:.3f} KB"
-                    print()
-                    print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=")
-
-                else:
-                    break
-            # inner while loop
+                        break
+                # inner while loop
+            except KeyboardInterrupt:
+                print("\n[*] User has requested an interrupt")
+                print("[*] Application Exiting.....")
+                sock.close()
+                conn.close()
+                sys.exit(1)
 
             if len(reply) > 0:
                 try:
@@ -168,6 +176,9 @@ def proxy_server(webserver, port, conn, addr, data):
                 print(f"[*] Connection Closed: {addr[0]}:{addr[1]}")
                 print()
                 break
+
+            # end of outer while loop
+            pass
         # outer while loop
 
         sock.close()
