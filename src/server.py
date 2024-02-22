@@ -46,6 +46,7 @@ def decrypt_str(data) -> bytearray:
     return result
 
 def start():    #Main Program
+    print('\n\n')
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -61,6 +62,20 @@ def start():    #Main Program
         print("[*] Unable to Initialize Socket")
         print(e)
         sys.exit(2)
+
+    # test code
+    test_bytes = bytearray.fromhex('fffefdfc')
+    print('\n')
+    print(f'Test   : {test_bytes}')
+    encrypt_bytes = encrypt_str(test_bytes)
+    print(f'Encrypt: {encrypt_bytes}')
+    decrypt_bytes = decrypt_str(encrypt_bytes)
+    print(f'Decrypt: {decrypt_bytes}')
+    if test_bytes == decrypt_bytes:
+        print('[*] Encrypt Test Success!!')
+    else:
+        print('[*] Encrypt Test Failure!!')
+    print('\n')
 
     while True:
         try:
@@ -126,19 +141,16 @@ def proxy_server(webserver, port, conn, addr, data):
         socket_counter = 1
         while True:
             print('-------------------------------')
-            if sock == 0:
-                if sender == 1:
-                    print(data)
-                    data = encrypt_str(data)
-                else:
-                    data = decrypt_str(data)
-                    try:
-                        print(data.decode())
-                    except UnicodeDecodeError:
-                        print(data)
-                print(f'\n---- Data length:{len(data)}\n')
+            if sender == 1:
+                print(data)
+                data = encrypt_str(data)
             else:
-                print(f'\n---- Data length:{len(data)}\n')
+                data = decrypt_str(data)
+                try:
+                    print(data.decode())
+                except UnicodeDecodeError:
+                    print(data)
+            print(f'\n---- Data length:{len(data)}\n')
 
             #Create a new socket if it is not created already. Else reuse the existing socket.
             if sock == 0:
@@ -155,34 +167,27 @@ def proxy_server(webserver, port, conn, addr, data):
             sock.send(data)
 
             try:
-                while True:
-                    reply = sock.recv(buffer_size)
-                    if len(reply) > 0:
-                        if sender == 1:
-                            reply = decrypt_str(reply)
-                            try:
-                                print(reply.decode())
-                            except UnicodeDecodeError:
-                                print(reply)
-                        else:
+                reply = sock.recv(buffer_size)
+                if len(reply) > 0:
+                    if sender == 1:
+                        reply = decrypt_str(reply)
+                        try:
+                            print(reply.decode())
+                        except UnicodeDecodeError:
                             print(reply)
-                            reply = encrypt_str(reply)
-                        print('-------------------------------')
-
-                        conn.send(reply)
-                        
-                        dar = float(len(reply))
-                        dar = float(dar/1024)
-                        dar = f"{dar:.3f} KB"
-                        print()
-                        print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=\n")
-                        break # exit inner loop 
                     else:
-                        break # exit inner loop because something happened...
+                        print(reply)
+                        reply = encrypt_str(reply)
 
-                    # end of inner while loop
-                    pass
-                # inner while loop
+                    print('-------------------------------')
+                    conn.send(reply)
+                    
+                    dar = float(len(reply))
+                    dar = float(dar/1024)
+                    dar = f"{dar:.3f} KB"
+                    print()
+                    print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=\n")
+
             except KeyboardInterrupt:
                 print("\n[*] User has requested an interrupt")
                 print("[*] Application Exiting.....")
