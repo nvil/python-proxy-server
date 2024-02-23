@@ -2,6 +2,7 @@ import argparse
 import socket
 import sys
 import traceback
+from time import sleep
 from _thread import *
 
 from decouple import config
@@ -26,7 +27,7 @@ max_connection = args.max_conn
 buffer_size = args.buffer_size
 sender = args.sender
 
-connect_counter = 1
+connect_counter = 0
 
 if sender == 0:
     listening_port = INTERNAL_PROXY_PORT #'55555'
@@ -36,6 +37,7 @@ def encrypt_str(data) -> bytearray:
     result = bytearray(data)
     for i in range(len(result)):
         result[i] = (result[i] + 2) & 0xff
+    print('>>> encrypted data')
     return result
 
 def decrypt_str(data) -> bytearray:
@@ -43,10 +45,12 @@ def decrypt_str(data) -> bytearray:
     result = bytearray(data)
     for i in range(len(result)):
         result[i] = (result[i] - 2) & 0xff
+    print('<<< decrypted data')
     return result
 
 def start():    #Main Program
-    print('\n\n')
+    global connect_counter
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -81,14 +85,16 @@ def start():    #Main Program
         try:
             conn, addr = sock.accept() #Accept connection from client browser
             data = conn.recv(buffer_size) #Recieve client data
-            start_new_thread(conn_string, (conn,data, addr)) #Starting a thread
+            connect_counter += 1
+            start_new_thread(conn_string, (conn,data, addr, connect_counter)) #Starting a thread
+            sleep(0.5)
         except KeyboardInterrupt:
             sock.close()
             print("\n[*] Graceful Shutdown")
             sys.exit(1)
 
-def conn_string(conn, data, addr):
-    global sender, connect_counter
+def conn_string(conn, data, addr, counter):
+    global sender
 
     try:
         #print(data)
@@ -124,15 +130,14 @@ def conn_string(conn, data, addr):
             port = 443
 
         print('\n-------------------------------')
-        print(f'\n[*] New connection established... {connect_counter}\n')
-        connect_counter += 1
-        proxy_server(webserver, port, conn, addr, data)
+        print(f'\n[*] New connection established... {counter}\n')
+        proxy_server(webserver, port, conn, addr, data, counter)
     except Exception as e:
         print(e)
         traceback.print_exc()
         pass
 
-def proxy_server(webserver, port, conn, addr, data):
+def proxy_server(webserver, port, conn, addr, data, counter):
     global sender, buffer_size
 
     try:
@@ -142,7 +147,7 @@ def proxy_server(webserver, port, conn, addr, data):
         while True:
             print('-------------------------------')
             if sender == 1:
-                print(data)
+                print(f'{counter}:>>> Sending: {data}')
                 data = encrypt_str(data)
             else:
                 data = decrypt_str(data)
@@ -152,70 +157,86 @@ def proxy_server(webserver, port, conn, addr, data):
                     print(data)
             print(f'\n---- Data length:{len(data)}\n')
 
-            #Create a new socket if it is not created already. Else reuse the existing socket.
+            #Create a new socket if it is not created already. Else reuse the existing socket. 
             if sock == 0:
                 print('-------------------------------')
-                print(f'[*] Creating a new socket... {socket_counter}')
+                print(f'{counter}:[*] Creating a new socket... {socket_counter}')
                 print()
-                print(f'[*] Connect to {webserver}:{port}, {conn}, return addr:{addr}') #Debugging purpose 
+                print(f'{counter}:[*] Connect to {webserver}:{port}, {conn}, return addr:{addr}') #Debugging purpose 
                 print('-------------------------------')
                 print()
                 socket_counter += 1
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
                 sock.connect((webserver, port))
 
-            sock.send(data)
-
+            print(f'\n{counter}:---- Data length:{len(data)}\n')
+            sock.send(data) # >>>>>>>>
+            print(f'{counter}:>>> sent data: {len(data)} to client {webserver}:{port}, socket:{sock}')
             try:
                 reply = sock.recv(buffer_size)
                 if len(reply) > 0:
                     if sender == 1:
                         reply = decrypt_str(reply)
                         try:
-                            print(reply.decode())
+                            #print(reply.decode())
+                            pass
                         except UnicodeDecodeError:
-                            print(reply)
+                            #print(reply)
+                            pass
                     else:
                         print(reply)
                         reply = encrypt_str(reply)
-
                     print('-------------------------------')
+
                     conn.send(reply)
                     
                     dar = float(len(reply))
                     dar = float(dar/1024)
                     dar = f"{dar:.3f} KB"
                     print()
-                    print(f"[*] Request Done: {addr[0]}:{addr[1]} => {dar} <=\n")
-
+                    print(f"{counter}:[*] Request Sending: {addr[0]}:{addr[1]} => {dar} <=\n")
             except KeyboardInterrupt:
-                print("\n[*] User has requested an interrupt")
-                print("[*] Application Exiting.....")
+                print("\n{counter}:[*] User has requested an interrupt")
+                print(f"[*] Application Exiting {addr[0]}:{addr[1]}.....")
                 sock.close()
                 conn.close()
                 sys.exit(1)
 
-            if len(reply) > 0:
+            # next step after reply
+            if len(reply) > 0: # after sendig reply
                 try:
-                    data = conn.recv(buffer_size) #Recieve client data
+                    for loop in range(6): # retry 3 times
+                        data = conn.recv(buffer_size) #Recieve client data
+                        print(f'{counter}:>>> got data: {len(data)} from client {addr[0]}:{addr[1]}')
+                        if len(data) > 0:
+                            break
+                        sleep(0.5)
                     if len(data) == 0:
-                        print(f"[*] Connection Closed: {addr[0]}:{addr[1]}\n")
+                        print(f"{counter}:[*] Connection Closed on recv: {addr[0]}:{addr[1]}\n")
                         break # exit outer loop
                 except Exception as e:
-                    print(e)
+                    print(f'{counter}: on recv:{addr[0]}:{addr[1]}, {e}')
                     data = ''
                     break # exit outer loop
             else:
-                print(f"[*] Connection Closed: {addr[0]}:{addr[1]}\n")
+                print(f"{counter}:[*] Connection Closed on reply: {addr[0]}:{addr[1]}\n")
                 data = ''
                 break # exit outer loop
 
             # end of outer while loop
             pass
         # outer while loop
-
+        print(f'{counter}:[*] Connection {addr[0]}:{addr[1]} closing.....!!!!\n\n')
         sock.close()
         conn.close()
+
+    except socket.timeout:
+        print(f'\n{counter}:[*] Connection {addr[0]}:{addr[1]} timeout!')
+        print(f'{counter}:[*] Connection {addr[0]}:{addr[1]} closing.....!!!!\n\n')
+        sock.close()
+        conn.close()
+        pass
 
     except socket.error:
         sock.close()
